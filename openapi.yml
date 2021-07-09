@@ -1,0 +1,620 @@
+openapi: '3.0.2'
+info:
+  title: Nails
+  version: '1.0'
+  description: An example Rust framework stack for writing microservices with MongoDB and RabbitMQ.
+servers:
+  - url: http://localhost:8989
+paths:
+
+  /account/{accountId}:
+    get:
+      tags:
+        - "Account Enquiry"
+      description: Retrieves the specific account by it's internal id.
+      parameters:
+        - name: accountId
+          in: path
+          required: true
+          schema:
+            type: string
+            description: The internal, unique identifier for the account.
+            example: ABC123
+      responses:
+        "200":
+          description: The request was successful and the body contains the requested account.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+        "204":
+          description: The requested account was not found on the system.
+
+  /accounts:
+    get:
+      tags:
+        - "Account Enquiry"
+      description: Retrieves all the accounts on the system. *Yes in a real app we'd paginate.*
+      responses:
+        "200":
+          description: Zero or more accounts was found.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Account"
+
+  /account-profile/{profileId}:
+    get:
+      tags:
+        - "Account Maintenance"
+      description: Retrieves the specific account profile by it's internal id.
+      parameters:
+        - name: profileId
+          in: path
+          required: true
+          schema:
+            type: string
+            description: The internal, unique identifier for the account profile.
+            example: RICH_CUSTOMERS
+      responses:
+        "200":
+          description: The request was successful and the body contains the requested account profile.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountProfile"
+        "204":
+          description: The requested account profile was not found on the system.
+
+  /create-account:
+    post:
+      tags:
+        - "Account Maintenance"
+      description: |
+        Create the account and all their devices and details. A notification is emitted with the details.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewAccount"
+      responses:
+        "201":
+          description: |
+            The account was created successfully. The created account is returned to the caller with any
+            fields which were optional but left out of the request populated (for example accountId).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+        "400":
+          description: |
+            The request contained some invalid data or the request was not formatted correctly. Some possible errors include: -
+            | errorCode | message (example) |
+            |-----------|-------------------|
+            | 1010      | Request format invalid: Json deserialize error: trailing characters at line 5 column 2      |
+            | 2005      | The request is not allowed and would cause a duplicate value: An error occurred when trying to execute a write operation: WriteError(WriteError { code: 11000, code_name: None, message: \"E11000 duplicate key error collection: Accounts.Accounts index: idx_accountExternalId dup key: { externalIds.key: \\\"accountNumber\\\", externalIds.value: \\\"ABC-124\\\" }\" })     |
+            | 2510      | Account profile SMELLY_CUSTOMERS not found |
+            | 2511      | Device profile semaphore not found         |
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: |
+            The request could not be completed because the caller doesn't have permission to create accounts.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: |
+            The request could not be completed because of a technical failure in the service or another service being called.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /device-profile/{profileId}:
+    get:
+      tags:
+        - "Account Maintenance"
+      description: Retrieves the specific device profile by it's internal id.
+      parameters:
+        - name: profileId
+          in: path
+          required: true
+          schema:
+            type: string
+            description: The internal, unique identifier for the device profile.
+            example: PC
+      responses:
+        "200":
+          description: The request was successful and the body contains the requested device profile.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceProfile"
+        "204":
+          description: The requested device profile was not found on the system.
+
+  /ping:
+    get:
+      tags:
+        - "Maintenance Endpoints"
+      description: A liveliness probe to ensure the service is running.
+      responses:
+        "200":
+          description: A confirmation message the service is running.
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: pong
+
+  /health:
+    get:
+      tags:
+        - "Maintenance Endpoints"
+      description: A readiness probe to see if the service ready to receive requests.
+      responses:
+        "200":
+          description: The service is ready. The response body contains the status of all downstream systems.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Healthcheck"
+              example:
+                MongoDB:
+                  healthy: true
+                RabbitMQ:
+                  healthy: true
+                Auth:
+                  healthy: true
+        "503":
+          description: |
+            The service is not ready for requests. One or more downstream systems is not reachable.
+            The response body will list the downstream systems and their state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Healthcheck"
+              example:
+                MongoDB:
+                  healthy: false
+                  message: Connection refused.
+                RabbitMQ:
+                  healthy: true
+                Auth:
+                  healthy: true
+
+  /settings:
+    get:
+      tags:
+        - "Maintenance Endpoints"
+      description: |
+        This enpoint returns the configuration the service is running with. It is a utility for
+        support staff to diagnose potential integration issues and should never be exposed in production.
+      responses:
+        "200":
+          description: The configuration values the service is running with.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: string
+
+  /set_time/{fixed_time}:
+    post:
+      tags:
+        - "Maintenance Endpoints"
+      description: |
+        A utility for tests to set a fixed time clock for deterministic times in responses.
+        This endpoint should never be exposed in production.
+      parameters:
+        - name: fixed_time
+          in: path
+          required: true
+          schema:
+            type: string
+            description: A new date and time in UTC timezone to set the clock to.
+            example: 2020-01-02T12:30:00.000Z
+      responses:
+        "200":
+          description: A confirmation message the time was updated
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: Time set to 2020-01-02T12:30:00.000Z
+        "400":
+          description: The request was not valid - typically the date format was incorrect.
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: input contains invalid characters
+
+  /reset_time:
+    post:
+      tags:
+        - "Maintenance Endpoints"
+      description: |
+        A utility for tests to restore normal clock time after calling set_time.
+        This endpoint should never be exposed in production.
+      responses:
+        "200":
+          description: A confirmation message the time was reset
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: Time no-longer fixed
+
+  /tracer/{level}:
+    post:
+      tags:
+        - "Maintenance Endpoints"
+      description: |
+        A utility for to turn full request / response body logging on or off.
+      parameters:
+        - name: level
+          in: path
+          required: true
+          schema:
+            type: string
+            enum:
+              - on
+              - off
+            description: Whether to turn tracer on or off.
+            example: on
+      responses:
+        "200":
+          description: A confirmation message the tracer has been enabled or disabled.
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: on
+
+  /update-account-status:
+    put:
+      tags:
+        - "Account Maintenance"
+      description: |
+        Updates the specified account's status. A notification is emitted with the details of the change.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StatusModification"
+      responses:
+        "200":
+          description: |
+            The account was updated successfully.
+        "400":
+          description: |
+            The request contained some invalid data or the request was not formatted correctly. Some possible errors include: -
+            | errorCode | message (example) |
+            |-----------|-------------------|
+            | 1010      | Request format invalid: Json deserialize error: trailing characters at line 5 column 2      |
+            | 2509      | Account {accountId} not found                          |
+            | 2512      | Account {accountId} cannot be updated: it is cancelled |
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: |
+            The request could not be completed because of a technical failure in the service or another service being called.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  schemas:
+    Account:
+      description: An account and all their devices. This is a read-only schema returned from the service.
+      readOnly: true
+      type: object
+      required:
+        - "accountId"
+        - "profileId"
+        - "status"
+        - "created"
+      properties:
+        accountId:
+          type: string
+          description: The unique identifier for the account.
+          example: ABC123
+        billingAddress:
+          description: A key-value map of address lines.
+          type: object
+          additionalProperties:
+            type: string
+          example:
+            addressLine1: 22 Acacca Avenue
+            postcode: NP20 1AA
+            countCode: GBR
+        created:
+          description: The date and time when the account was created on the system.
+          type: string
+          format: date-time
+          example: "2020-01-02T12:00:00.000Z"
+        devices:
+          description: All the devices the account has registered.
+          type: array
+          items:
+            $ref: "#/components/schemas/Device"
+        externalIds:
+          description: |
+            A map of unique identifiers for the account for external systems. For example, although we
+            have our own accountId, an account ay have a nation insurance number used to identify and
+            retrive the details with.
+          type: object
+          additionalProperties:
+            type: string
+          example:
+            passportId: 1234567
+        modified:
+          description: The date and time when the account was last modified.
+          type: string
+          format: date-time
+          example: "2020-01-02T14:15:00.000Z"
+        profileId:
+          description: |
+            The unique identifier of an AccountProfile for this account. If none is specified then a
+            value of DEFAULT is used to point to the default AccountProfile.
+          type: string
+          example: PREMIUM_ACCOUNTS
+        salutation:
+          description: How to greet the account holder.
+          type: string
+          example: Mr Barry White
+        status:
+          description: |
+            The status of this account. This can be used to restrict activity the account can perform.
+            Note, a CANCELLED account can never have thier status changed. If not specified, the default
+            value of ACTIVE is used.
+          type: string
+          enum:
+            - ACTIVE
+            - RESTRICTED
+            - SUSPENDED
+            - CANCELLED
+          example: ACTIVE
+
+    AccountProfile:
+      description: A grouping of accounts.
+      type: object
+      readOnly: true
+      required:
+        - "profileId"
+      properties:
+        profileId:
+          type: string
+          description: The unique identifier for the profile.
+          example: RICH_CUSTOMERS
+
+    Device:
+      description: Represents a device for an account. This schema is read-only.
+      type: object
+      readOnly: true
+      required:
+        - "deviceId"
+        - "profileId"
+        - "deviceType"
+        - "enabled"
+      properties:
+        deviceId:
+          type: string
+          description: The unique identifier for the device.
+          example: ABC123
+        profileId:
+          description: |
+            The unique identifier of an DeviceProfile for this device.
+          type: string
+          example: ANDROID_DEVICES
+        deviceType:
+          description: The type of device registered to the account.
+          type: string
+          enum:
+            - SMARTPHONE
+            - PC
+            - STB
+          example: SMARTPHONE
+        enabled:
+          description: If the device is allowed to be used.
+          type: boolean
+          example: true
+        externalIds:
+          description: |
+            A map of unique identifiers for the device for external systems. For example, although we
+            have our own deviceId, an device ay have a serial number used to identify and retrive it's
+            details with.
+          type: object
+          additionalProperties:
+            type: string
+          example:
+            serialNumber: 1234567
+
+    DeviceProfile:
+      description: A grouping of devices.
+      type: object
+      readOnly: true
+      required:
+        - "profileId"
+      properties:
+        profileId:
+          type: string
+          description: The unique identifier for the profile.
+          example: PC
+
+    ErrorResponse:
+      description: Indicates a request has failed for some reason.
+      type: object
+      properties:
+        errorCode:
+          description: A unique error code indicating the cause of the problem
+          type: integer
+          format: int32
+          example: 2510
+        message:
+          description: |
+            A description of the problem. This will only be included in the response returned if the
+            HTTP status of the response is a 400 and the service is configured to return bad request
+            failure messages.
+          type: string
+          example: Account profile UNHAPPY_CUSTOMERS not found
+      required:
+        - "errorCode"
+
+    Healthcheck:
+      description: The result of performing a health check request. Indicates the status of the service.
+      type: object
+      properties:
+        MongoDB:
+          type: object
+          $ref: "#/components/schemas/HealthStatus"
+        RabbitMQ:
+          type: object
+          $ref: "#/components/schemas/HealthStatus"
+        Auth:
+          type: object
+          $ref: "#/components/schemas/HealthStatus"
+      required:
+        - "Auth"
+        - "MongoDB"
+        - "RabbitMQ"
+
+    HealthStatus:
+        description: Inidcates the health status of a downstream service.
+        type: object
+        properties:
+          healthy:
+            type: boolean
+            description: true if the remote system is okay, false to indicate some failure.
+          message:
+            type: string
+            description: A description of the problem if healthy is false.
+        required:
+          - "healthy"
+
+    NewAccount:
+      description: Used when creating a new account.
+      type: object
+      properties:
+        accountId:
+          type: string
+          description: The unique identifier for the account. Optional, generated if not specified.
+          example: ABC123
+        billingAddress:
+          description: A key-value map of address lines.
+          type: object
+          additionalProperties:
+            type: string
+          example:
+            addressLine1: 22 Acacca Avenue
+            postcode: NP20 1AA
+            countCode: GBR
+        devices:
+          description: All the devices the account has registered.
+          type: array
+          items:
+            $ref: "#/components/schemas/NewDevice"
+        externalIds:
+          description: |
+            A map of unique identifiers for the account for external systems. For example, although we
+            have our own accountId, an account ay have a nation insurance number used to identify and
+            retrive the details with.
+          type: object
+          additionalProperties:
+            type: string
+          example:
+            passportId: 1234567
+        profileId:
+          description: |
+            The unique identifier of an AccountProfile for this account. If none is specified then a
+            value of DEFAULT is used to point to the default AccountProfile.
+          type: string
+          example: PREMIUM_ACCOUNTS
+        salutation:
+          description: How to greet the account holder.
+          type: string
+          example: Mr Barry White
+        status:
+          description: |
+            The status of this account. This can be used to restrict activity the account can perform.
+            Note, a CANCELLED account can never have thier status changed. If not specified, the default
+            value of ACTIVE is used.
+          type: string
+          enum:
+            - ACTIVE
+            - RESTRICTED
+            - SUSPENDED
+            - CANCELLED
+          example: ACTIVE
+
+    NewDevice:
+      description: Used when creating a device for an account.
+      type: object
+      properties:
+        deviceId:
+          type: string
+          description: The unique identifier for the device. Optional, generated if not specified.
+          example: ABC123
+        profileId:
+          description: |
+            The unique identifier of an DeviceProfile for this device. If none is specified then a
+            value of DEFAULT is used to point to the default DeviceProfile.
+          type: string
+          example: ANDROID_DEVICES
+        deviceType:
+          description: The type of device registered to the account.
+          type: string
+          enum:
+            - SMARTPHONE
+            - PC
+            - STB
+          example: SMARTPHONE
+        enabled:
+          description: If the device is allowed to be used.
+          type: boolean
+          example: true
+        externalIds:
+          description: |
+            A map of unique identifiers for the device for external systems. For example, although we
+            have our own deviceId, an device ay have a serial number used to identify and retrive it's
+            details with.
+          type: object
+          additionalProperties:
+            type: string
+          example:
+            serialNumber: 1234567
+
+    StatusModification:
+      description: The details of an account and the new status to set the account to.
+      type: object
+      readOnly: true
+      required:
+        - "accountId"
+        - "status"
+      properties:
+        accountId:
+          type: string
+          description: The unique identifier for the account. Optional, generated if not specified.
+          example: ABC123
+        status:
+          description: |
+            The status of this account. This can be used to restrict activity the account can perform.
+            Note, a CANCELLED account can never have thier status changed. If not specified, the default
+            value of ACTIVE is used.
+          type: string
+          enum:
+            - ACTIVE
+            - RESTRICTED
+            - SUSPENDED
+            - CANCELLED

@@ -1,0 +1,19 @@
+{
+    "request": {
+        "method": "POST",
+        "url": "/auth/get-claims?param1=value1"
+    },
+    "response": {
+        "status": 200,
+        "jsonBody": {
+            "claims": [
+                "create-account",
+                "read-own-account",
+                "etc"
+            ]
+        },
+        "headers": {
+            "Content-Type": "application/json"
+        }
+    }
+}

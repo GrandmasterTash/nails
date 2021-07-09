@@ -1,0 +1,71 @@
+version: '3.7'
+
+services:
+  # Un-comment this to run a release in docker
+  # nails:
+  #   image: 'nails:latest'
+  #   container_name: 'nails'
+  #   environment:
+  #     - MONGO_URI=mongodb://$$USERNAME:$$PASSWORD@mongo:27017/?connectTimeoutMS=5000&socketTimeoutMS=5000&serverSelectionTimeoutMS=5000
+  #     - MONGO_CREDENTIALS=/test_credentials
+  #     - RABBIT_URI=amqp://$$USERNAME:$$PASSWORD@rabbit:5672
+  #     - RABBIT_CREDENTIALS=/test_credentials
+  #     - AUTH_ADDRESS=http://wiremock:8080
+  #     - JAEGER_ENDPOINT=jaeger:6831
+  #   volumes:
+  #     - ./utils/test_credentials:/test_credentials:ro
+  #   ports:
+  #     - '8989:8989'
+  #   networks:
+  #     - docker_net
+
+  rabbitmq:
+    image: 'bitnami/rabbitmq:latest'
+    container_name: 'rabbit'
+    environment:
+      - RABBITMQ_USERNAME=admin
+      - RABBITMQ_PASSWORD=changeme
+    ports:
+      - '5672:5672'
+      - '15672:15672'
+    networks:
+      - docker_net
+
+  mongo:
+    image: mongo
+    container_name: 'mongo'
+    ports:
+      - '27017:27017'
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: changeme
+    networks:
+      - docker_net
+
+  # UI available on http://localhost:8111/__admin/webapp/mappings
+  wiremock:
+    image: holomekc/wiremock-gui
+    container_name: 'wiremock'
+    environment:
+      WIREMOCK_OPTIONS: "--root-dir=/home/wiremock/storage"
+    volumes:
+      - "./utils/wiremock:/home/wiremock/storage/mappings:ro"
+    ports:
+      - '8111:8080'
+    networks:
+      - docker_net
+
+  # UI available on http://localhost:16686/
+  jaeger:
+    image: "jaegertracing/all-in-one"
+    container_name: "jaeger"
+    networks:
+      - docker_net
+    ports:
+      - "6831:6831/udp"
+      - "6832:6832/udp"
+      - "16686:16686"
+      - "14268:14268"
+
+networks:
+  docker_net:

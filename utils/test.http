@@ -1,0 +1,147 @@
+@host=http://localhost:8989
+
+###
+# @name ping
+GET {{host}}/ping
+
+###
+# @name health
+GET {{host}}/health
+
+###
+# @name settings
+GET {{host}}/settings
+
+###
+# @name set_time
+POST {{host}}/set_time/2020-01-02T12:30:00.000Z
+
+###
+# @name metrics
+GET {{host}}/metrics
+
+###
+# @name tracer_on
+POST {{host}}/tracer/on
+
+###
+# @name tracer_off
+POST {{host}}/tracer/off
+
+###
+# @name tracer_bullet
+POST {{host}}/tracer/bullet?header=value
+
+###
+# @name get_accounts
+GET {{host}}/accounts
+
+###
+# @name get_account_by_id
+GET {{host}}/account/{{get_accounts.response.body.$[0].accountId}}
+
+###
+# @name create_account_with_id_and_profile
+POST http://localhost:8989/create-account
+Content-Type: application/json
+
+{
+    "accountId": "test_{{$guid}}",
+    "salutation": "Mr Blobby",
+    "profileId": "DEFAULT"
+}
+
+###
+# @name create_account_no_id_or_profile
+POST {{host}}/create-account
+Content-Type: application/json
+
+{
+    "salutation": "Mr Blobby",
+    "devices": [
+        {
+            "deviceType": "STB",
+            "externalIds": [
+                {
+                    "key": "casn",
+                    "value": "654321"
+                }
+            ]
+        },
+        {
+            "deviceType": "PC",
+            "profileId": "DEFAULT"
+        }
+    ],
+    "billingAddress": [
+        {
+            "key": "address1",
+            "value": "123 Somewhere Street"
+        },
+        {
+            "key": "postcode",
+            "value": "ABC 1DE"
+        },
+        {
+            "key": "countryCode",
+            "value": "GB"
+        }
+    ],
+    "externalIds": [
+        {
+            "key": "accountNumber",
+            "value": "ABC-124"
+        },
+        {
+            "key": "providerRef",
+            "value": "XXX124"
+        }
+    ]
+}
+
+###
+# @name create_account_with_duplicate_device_id
+POST http://localhost:8989/create-account
+Content-Type: application/json
+
+{
+    "accountId": "test_{{$guid}}",
+    "salutation": "Mr Blobby",
+    "profileId": "DEFAULT",
+    "devices": [
+        {
+            "deviceId": "TEST",
+            "deviceType": "PC"
+        }
+    ]
+}
+
+###
+# @name suspend_account
+PUT {{host}}/update-account-status
+Content-Type: application/json
+
+{
+    "accountId": "{{get_accounts.response.body.$[0].accountId}}",
+    "status": "SUSPENDED"
+}
+
+###
+# @name activate_account
+PUT {{host}}/update-account-status
+Content-Type: application/json
+
+{
+    "accountId": "{{get_accounts.response.body.$[0].accountId}}",
+    "status": "ACTIVE"
+}
+
+###
+# @name cancel_account
+PUT {{host}}/update-account-status
+Content-Type: application/json
+
+{
+    "accountId": "{{get_accounts.response.body.$[0].accountId}}",
+    "status": "CANCELLED"
+}

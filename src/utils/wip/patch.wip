@@ -1,0 +1,175 @@
+use crate::{model::{account::{ACCOUNTS, ACCOUNT_ID, Account, AccountStatus, AddressLine, STATUS}, device::DeviceType, external_id::ExternalId, profile::PROFILE_ID}, routes::get_account::get_account, utils::{context::RequestContext, errors::InternalError, mongo::{self, bson_date, optional_bson_date}}};
+use mongodb::bson::{Bson, Document, doc};
+use serde::{Deserialize, Deserializer, Serialize};
+
+///
+/// This file contains code which could be used to implement patch-like requests.
+///
+/// It was abandonded whilst work in-progress.
+///
+
+#[serde(rename_all = "camelCase")]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct AccountModification {
+    pub account_id: String,
+
+    #[serde(default)]
+    pub status: Patch<AccountStatus>,
+
+    #[serde(default)]
+    pub profile_id: Patch<String>,
+
+    #[serde(default)]
+    pub salutation: Patch<String>,
+
+    #[serde(default)]
+    pub billing_address: Patch<Vec<AddressLine>>,
+
+    #[serde(default)]
+    pub external_ids: Patch<Vec<ExternalId>>,
+}
+
+
+#[serde(rename_all = "camelCase")]
+#[derive(Debug, Deserialize)]
+pub struct DeviceModification {
+    pub device_id: String,
+
+    #[serde(default)]
+    pub profile_id: Patch<String>,
+
+    #[serde(default)]
+    pub device_type: Patch<DeviceType>,
+
+    #[serde(default)]
+    pub enabled: Patch<bool>,
+
+    #[serde(default)]
+    pub external_ids: Patch<Vec<ExternalId>>,
+}
+
+
+
+// TODO: Put patch code in own file out of the way.
+#[derive(Debug, Serialize)]
+pub enum Patch <T> {
+    NotSpecified,
+    Null,
+    Some(T)
+}
+
+impl<T> Default for Patch<T> {
+    fn default() -> Self {
+        Patch::NotSpecified
+    }
+}
+
+impl<T> From<Option<T>> for Patch<T> {
+    fn from(opt: Option<T>) -> Patch<T> {
+        match opt {
+            Some(v) => Patch::Some(v),
+            None => Patch::Null,
+        }
+    }
+}
+
+impl<'de, T> Deserialize<'de> for Patch<T>
+where
+    T: Deserialize<'de>,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Option::deserialize(deserializer).map(Into::into)
+    }
+}
+
+impl From<bson::ser::Error> for InternalError {
+    fn from(error: bson::ser::Error) -> Self {
+        InternalError::InvalidBsonError { cause: error.to_string() }
+    }
+}
+
+///
+/// If the struct field is specified with a value, add it to a MongoDB $set BSON.
+/// If the struct field is specified as null, add it to a MongoDB $unset BSON.
+/// If the struct field is not specified, ignore it.
+///
+// pub fn convert_patch_field_to_bson<T: Into<Bson>>(key: &str, field: Patch<T>, mut set: Document, mut unset: Document) 
+pub fn convert_patch_field_to_bson<T: Serialize>(key: &str, field: Patch<T>, mut set: Document, mut unset: Document) 
+    -> Result<(/* $set */ Document, /* $unset */ Document), InternalError> {
+
+    match field {
+        Patch::NotSpecified => { (); },
+        Patch::Null         => { unset.insert(key, Bson::Null); },
+        // Patch::Some(value)  => { set.insert(key, value.into()); }
+        Patch::Some(value)  => { todo!() }
+        // Patch::Some(value)  => { set.insert(key, bson::ser::to_bson(&value)?); }
+    };
+    Ok((set, unset))
+}
+
+
+///
+/// Validate and update the account specified. The latest account is only returned if it was modified.
+///
+pub async fn update_account(
+    ctx: RequestContext,
+    account_modification: AccountModification)
+    -> Result<Option<Account>, InternalError> {
+
+    // Get the existing record.
+    let account = match get_account(&ctx.db(), &account_modification.account_id).await? {
+        Some(account) => account,
+        None => return Err(InternalError::AccountNotFound{ account_id: account_modification.account_id })
+    };
+
+    // TODO: Validate the request. CANCELLED is terminal for example.
+    // TODO: Status and Profile cannot be cleared.
+
+    // Update in MongoDB.
+    let result = ctx.db().collection(ACCOUNTS).update_one(
+        /* Filter  */ doc!{ ACCOUNT_ID: account.account_id },
+        /* Update  */ convert_patch_struct_to_bson(account_modification)?,
+        /* Options */ None)
+        .await?;
+
+    // TODO: Apply. if data was  modified, generate a notification.
+
+    // TODO: Notifty about before and after fields (remove credentials -> if only credentials change, send CredentialsChanged notification with no details).
+
+    todo!()
+}
+
+fn convert_patch_struct_to_bson(account: AccountModification) -> Result<Document, InternalError> {
+    let (set, unset) = convert_patch_field_to_bson("salutation", account.salutation, doc!{}, doc!{})?;
+    let (set, unset) = convert_patch_field_to_bson(STATUS, account.status, set, unset)?;
+    let (set, unset) = convert_patch_field_to_bson("billingAddress", account.billing_address, set, unset)?;
+    let (set, unset) = convert_patch_field_to_bson(PROFILE_ID, account.profile_id, set, unset)?;
+    let (set, unset) = convert_patch_field_to_bson("externalIds", account.external_ids, set, unset)?;
+    Ok(compose_patch(set, unset)?)
+}
+
+///
+/// Create an update BSON Document from both the $set and $unset Documents.
+/// An error is returned if there are no sets or unsets as the update is not valid.
+///
+pub fn compose_patch(set: Document, unset: Document) -> Result<Document, InternalError> {
+    let mut update = doc!{};
+
+    if !set.is_empty() {
+        update.insert("$set", set);
+    }
+
+    if !unset.is_empty() {
+        update.insert("$unset", unset);
+    }
+
+    // If there's no fields to set OR unset then return bad request.
+    if update.is_empty() {
+        return Err(InternalError::MongoDBUpdateEmpty)
+    }
+
+    Ok(update)
+}
