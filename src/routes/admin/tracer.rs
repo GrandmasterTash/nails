@@ -51,5 +51,5 @@ pub async fn handle_off() -> impl Responder {
         *lock = Level::Off;
     }
     info!("Tracer is off");
-    "on".with_status(StatusCode::OK)
+    "off".with_status(StatusCode::OK)
 }

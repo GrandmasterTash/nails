@@ -165,7 +165,7 @@ impl ResponseError for InternalError {
     }
 
     fn error_response(&self) -> HttpResponse {
-        error!("{}", self);// TODO: Can we capture the request_id?
+        error!("{}", self);
 
         let body = match self.redact_message() {
             true => json!(

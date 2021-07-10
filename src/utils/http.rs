@@ -1,6 +1,7 @@
 use url::Url;
 use futures::Stream;
 use serde_json::Value;
+use ansi_term::Colour;
 use itertools::Itertools;
 use tracing::{info, warn};
 use std::collections::HashMap;
@@ -24,6 +25,14 @@ pub fn http_client(config:&Configuration) -> Client {
             .finish())
         .finish()
 }
+
+// For tracing.
+const IN: &str = ">> ";
+const OUT: &str = "<< ";
+const GREY: Colour = Colour::RGB(110, 110, 110);
+const RED: Colour = Colour::RGB(205, 92, 92);
+const AMBER: Colour = Colour::RGB(255, 140, 0);
+const GREEN: Colour = Colour::RGB(107, 142, 35);
 
 ///
 /// Alias onto the Actix Futures response.
@@ -137,7 +146,7 @@ impl HttpRequest {
             // Add the request_id header.
             append_header(REQUEST_ID_HEADER, ctx.request_id(), &mut req)?;
 
-            self.trace_request();
+            self.trace(&req);
 
             // Make the request now with the appropriate body type.
             let resp = match &self.body {
@@ -152,8 +161,8 @@ impl HttpRequest {
                 },
                 Ok(resp) => {
                     // If we have a response but it's a 50x.
-                    actix_rt::time::delay_for(Duration::from_secs(ctx.config().client_retry_delay)).await;
                     attempts += 1;
+                    actix_rt::time::delay_for(Duration::from_secs(ctx.config().client_retry_delay)).await;
 
                     // If retries exceeded fail.
                     if self.dont_retry || (attempts > ctx.config().client_retry_limit) {
@@ -166,8 +175,8 @@ impl HttpRequest {
                     }
                 },
                 Err(err) => {
-                    actix_rt::time::delay_for(Duration::from_secs(ctx.config().client_retry_delay)).await;
                     attempts += 1;
+                    actix_rt::time::delay_for(Duration::from_secs(ctx.config().client_retry_delay)).await;
 
                     // If retries exceeded fail.
                     if self.dont_retry || (attempts > ctx.config().client_retry_limit) {
@@ -183,7 +192,7 @@ impl HttpRequest {
         }?;
 
         let resp = HttpResponse {
-            url: url.to_string(),
+            url,
             method: self.method.clone(),
             body: resp.body().await?,
             inner: resp
@@ -193,21 +202,26 @@ impl HttpRequest {
         Ok(resp)
     }
 
-    fn trace_request(&self) {
+    fn trace(&self, req: &ClientRequest) {
         if tracer::tracer_on() {
             let body = match &self.body {
                 None => String::default(),
                 Some(body) => format!("\n{}", String::from_utf8(body.clone()).unwrap_or("cant read body".to_string())),
             };
 
-            let headers = match self.headers.is_empty() {
+            let headers = match req.headers().is_empty() {
                 true => String::default(),
-                false => format!("\n{}", self.headers.iter().map(|(key, value)| format!("{}: {}", key, value)).join("\n"))
+                false => format!("\n{}", req.headers().iter().map(|(key, value)| format!("{}{}{} {}",
+                    GREY.paint(OUT),
+                    key,
+                    Colour::Yellow.paint(":"),
+                    value.to_str().unwrap_or("cant read value"))).join("\n"))
             };
 
-            info!("Sending downstream request\n{} {}{}{}",
+            info!("Sending downstream request\n{}{} {}{}{}\n",
+                GREY.paint(OUT),
                 self.method,
-                self.url,
+                req.get_uri(),
                 headers,
                 body);
         }
@@ -222,10 +236,10 @@ fn append_header(name: &str, value: &str, req: &mut ClientRequest) -> Result<(),
 }
 
 pub struct HttpResponse {
-    url: String,    // The original request URL.
+    url: Url,       // The original request URL.
     method: Method, // The original request HTTP method.
     body: Bytes,    // Any received payload.
-    inner: ActixHttpResponse
+    inner: ActixHttpResponse // Keep the wrapped response in-case we need to epose anything in the future.
 }
 
 impl HttpResponse {
@@ -234,7 +248,7 @@ impl HttpResponse {
     }
 
     pub fn url(&self) -> &str {
-        &self.url
+        &self.url.as_str()
     }
 
     pub fn method(&self) -> Method {
@@ -250,13 +264,18 @@ impl HttpResponse {
 
             let headers = match self.inner.headers().is_empty() {
                 true => String::default(),
-                false => format!("\n{}", self.inner.headers().iter().map(|(key, value)| format!("{}: {}", key, value.to_str().unwrap_or("cant read header"))).join("\n"))
+                false => format!("\n{}", self.inner.headers().iter().map(|(key, value)| format!("{}{}{} {}",
+                    GREY.paint(IN),
+                    key,
+                    Colour::Yellow.paint(":"),
+                    value.to_str().unwrap_or("cant read header"))).join("\n"))
             };
 
-            info!("Received response from downstream request\n{} {} {}{}{}",
+            info!("Received response from downstream request\n{}{} {} {}{}{}\n",
+                GREY.paint(IN),
                 self.method,
                 self.url,
-                self.inner.status(),
+                colour_status(self.inner.status().as_u16()),
                 headers,
                 body);
         }
@@ -264,6 +283,17 @@ impl HttpResponse {
 
     pub fn json<T: DeserializeOwned>(&self) -> Result<T, InternalError> {
         Ok(serde_json::from_slice(&self.body)?)
+    }
+}
+
+///
+/// Return the status with ansi-colouring.
+///
+pub fn colour_status(status: u16) -> String {
+    match status {
+        status @ 200..=299 => format!("{}", GREEN.paint(format!("{}", status))),
+        status @ 300..=399 => format!("{}", AMBER.paint(format!("{}", status))),
+        status @         _ => format!("{}", RED.paint(format!("{}", status))),
     }
 }
 

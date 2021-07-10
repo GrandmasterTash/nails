@@ -1,5 +1,6 @@
 use uuid::Uuid;
 use serde_json::Value;
+use ansi_term::Colour;
 use parking_lot::RwLock;
 use lazy_static::lazy_static;
 use std::{fs, time::Duration};
@@ -245,6 +246,9 @@ fn to_rabbit_message(notification: &Notification, app_name: &str) -> Option<(Vec
     }
 }
 
+const OUT: &str  = "<< ";
+const GREY: Colour = Colour::RGB(110, 110, 110);
+
 ///
 /// Send the RabbitMQ message - any errors are logged but ignored.
 ///
@@ -261,16 +265,32 @@ fn send(props: BasicProperties, bytes: Vec<u8>, notification: Notification, cc: 
                 match confirm.wait() {
                     Err(err) => error!("Failed to ack send for notification {:?}: {}", notification, err.to_string()),
                     _ => {
+                        // TODO: Put in own fn
                         if tracer::tracer_on() {
-                            let headers = format!("version: {}\nmessageType: {}",
+                            let headers = format!("{}version{} {}\n{}messageType{} {}",
+                                GREY.paint(OUT),
+                                Colour::Yellow.paint(":"),
                                 notification.version,
+                                GREY.paint(OUT),
+                                Colour::Yellow.paint(":"),
                                 notification.topic);
 
-                            info!("Emitting message to {}\nApp-Id: {}\nContent-Type: {:?}\nCorrelation-Id: {:?}\nMessage-Id: {:?}\n{}\n{}",
+                            info!("Emitting message to {}\n{}App-Id{} {}\n{}Content-Type{} {:?}\n{}Correlation-Id{} {:?}\n{}Message-Id{} {:?}\n{}\n{}\n",
                                 notification.topic,
+                                GREY.paint(OUT),
+                                Colour::Yellow.paint(":"),
                                 props.app_id().format(),
+
+                                GREY.paint(OUT),
+                                Colour::Yellow.paint(":"),
                                 props.content_type().format(),
+
+                                GREY.paint(OUT),
+                                Colour::Yellow.paint(":"),
                                 props.correlation_id().format(),
+
+                                GREY.paint(OUT),
+                                Colour::Yellow.paint(":"),
                                 props.message_id().format(),
                                 headers,
                                 notification.body);

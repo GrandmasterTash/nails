@@ -1,5 +1,6 @@
 use tracing::info;
 use std::pin::Pin;
+use ansi_term::Colour;
 use std::future::Future;
 use itertools::Itertools;
 use std::marker::PhantomData;
@@ -10,8 +11,11 @@ use actix_web::web::{Bytes, BytesMut};
 use actix_service::{Service, Transform};
 use actix_web::body::{BodySize, MessageBody, ResponseBody};
 use actix_web::{dev::ServiceRequest, dev::ServiceResponse, Error};
-
 use crate::routes::admin::tracer;
+use crate::utils::http::colour_status;
+
+const OUT: &str = "< ";
+const GREY: Colour = Colour::RGB(110, 110, 110);
 
 pub struct Logging;
 
@@ -51,10 +55,20 @@ where
     }
 
     fn call(&mut self, req: ServiceRequest) -> Self::Future {
-        let remote_addr = req.connection_info().realip_remote_addr().unwrap_or("unknown").to_string();
+        let partial_log = match tracer::tracer_on() {
+            false => None,
+            true => {
+                let remote_addr = req.connection_info().realip_remote_addr().unwrap_or("unknown").to_string();
+                Some(format!("Response sent to {}\n{}{}{}",
+                    remote_addr,
+                    GREY.paint(OUT),
+                    req.method(),
+                    req.uri()))
+            }
+        };
+
         WrapperStream {
-            remote_addr,
-            uri: format!("{} {}", req.method(), req.uri()),
+            partial_log,
             fut: self.service.call(req),
             _t: PhantomData,
         }
@@ -68,9 +82,7 @@ where
     S: Service,
 {
     #[pin]
-    remote_addr: String,
-    #[pin]
-    uri: String,
+    partial_log: Option<String>,
     #[pin]
     fut: S::Future,
     _t: PhantomData<(B,)>,
@@ -85,20 +97,21 @@ where
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let projected = self.project();
-        let uri = projected.uri.clone();
-        let remote_addr = projected.remote_addr.clone();
+        let partial_log = projected.partial_log.clone();
         let res = futures::ready!(projected.fut.poll(cx));
 
         Poll::Ready(res.map(|res| {
             res.map_body(move |resp_head, body| {
-                let partial_log = match tracer::tracer_on() {
-                    true => format!("{} {}\n{}", uri, resp_head.status.as_u16(), format_headers(resp_head)),
-                    false => String::default(),
+                let more_log = match partial_log {
+                    None => None,
+                    Some(partial_log) => Some(format!("{} {}\n{}",
+                        partial_log,
+                        colour_status(resp_head.status.as_u16()),
+                        format_headers(resp_head))),
                 };
 
                 ResponseBody::Body(BodyLogger {
-                    remote_addr,
-                    partial_log,
+                    more_log,
                     body,
                     body_accum: BytesMut::new(),
                 })
@@ -109,8 +122,7 @@ where
 
 #[pin_project::pin_project(PinnedDrop)]
 pub struct BodyLogger<B> {
-    remote_addr: String,
-    partial_log: String,
+    more_log: Option<String>,
     #[pin]
     body: ResponseBody<B>,
     body_accum: BytesMut,
@@ -119,13 +131,12 @@ pub struct BodyLogger<B> {
 #[pin_project::pinned_drop]
 impl<B> PinnedDrop for BodyLogger<B> {
     fn drop(self: Pin<&mut Self>) {
-        if tracer::tracer_on() {
-            if !self.body_accum.is_empty() {
-                let body = String::from_utf8(self.body_accum.to_vec()).unwrap_or(String::from("cant read body"));
-                info!("Response sent to {}\n{}\n{}", self.remote_addr, self.partial_log, body);
-            } else {
-                info!("Response sent to {}\n{}", self.remote_addr, self.partial_log);
-            }
+        if let Some(more_log) = &self.more_log {
+            let body = match self.body_accum.len() {
+                0 => String::default(),
+                _ => format!("\n{}", String::from_utf8(self.body_accum.to_vec()).unwrap_or(String::from("cant read body")))
+            };
+            info!("{}{}\n", more_log, body);
         }
     }
 }
@@ -150,10 +161,13 @@ impl<B: MessageBody> MessageBody for BodyLogger<B> {
     }
 }
 
-
 fn format_headers(rsp: &ResponseHead) -> String {
     rsp.headers()
         .iter()
-        .map(|(key, value)| format!("{}: {}", key, value.to_str().unwrap_or("cant read value")) )
+        .map(|(key, value)| format!("{}{}{} {}",
+            GREY.paint(OUT),
+            key,
+            Colour::Yellow.paint(":"),
+            value.to_str().unwrap_or("cant read value")) )
         .join("\n")
 }

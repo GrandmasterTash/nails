@@ -1,6 +1,7 @@
 use std::rc::Rc;
 use std::pin::Pin;
 use tracing::info;
+use ansi_term::Colour;
 use std::cell::RefCell;
 use itertools::Itertools;
 use std::task::{Context, Poll};
@@ -9,8 +10,10 @@ use actix_web::web::{Bytes, BytesMut};
 use actix_service::{Service, Transform};
 use futures::future::{ok, Future, Ready};
 use actix_web::{dev::ServiceRequest, dev::ServiceResponse, Error, HttpMessage};
-
 use crate::routes::admin::tracer;
+
+const IN: &str = "> ";
+const GREY: Colour = Colour::RGB(110, 110, 110);
 
 pub struct Logging;
 
@@ -67,8 +70,9 @@ where
 
                 let body = body.freeze();
 
-                info!("Request received from {}\n{}\n{}{}",
+                info!("Request received from {}\n{}{}\n{}{}\n",
                     req.connection_info().realip_remote_addr().unwrap_or("unknown"),
+                    GREY.paint(IN),
                     format_path(&req),
                     format_headers(&req),
                     format_body(&body));
@@ -92,7 +96,11 @@ fn format_path(req: &ServiceRequest) -> String {
 
 fn format_headers(req: &ServiceRequest) -> String {
     req.headers().iter()
-        .map(|(key, value)| format!("{}: {}", key, value.to_str().unwrap_or("cant read value")))
+        .map(|(key, value)| format!("{}{}{} {}",
+            GREY.paint(IN),
+            key,
+            Colour::Yellow.paint(":"),
+            value.to_str().unwrap_or("cant read value")))
         .join("\n")
 }
 

@@ -18,9 +18,9 @@ use actix_web::{App, HttpServer, body::Body, dev::{ServiceRequest, ServiceRespon
 use utils::{config::{Configuration, default_env}, context::{InitialisationContext, PartialRequestContext}, errors::{configure_json_extractor, InternalError}, mongo::{get_mongo_db, update_mongo}, rabbit::rabbit_publisher};
 use routes::{admin::{health, ping, set_time, settings, tracer}, create_account, get_account, get_account_profile, get_accounts, get_device_profile, update_account};
 
-// TODO: Don't upload wip folder to new project!
-// TODO: Stip the binary
-// TODO: Propagte span context into middleware so logged errors are within a span. This will require a newer actix_otel see https://github.com/OutThereLabs/actix-web-opentelemetry/pull/60/commits/66ce5b5b16b32004f1374263b60adf0f3141fe71
+// TODO: Propagate span context into middleware so logged errors are within a span.
+//    This will require a newer actix_otel see https://github.com/OutThereLabs/actix-web-opentelemetry/pull/60/commits/66ce5b5b16b32004f1374263b60adf0f3141fe71
+//    If we can't do this, create an ExternalError that builds from an InternalError + RequestContext and have request id logged.
 
 pub const APP_NAME: &'static str = "Nails"; // Keep in sync with cargo.toml
 
