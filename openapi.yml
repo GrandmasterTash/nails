@@ -279,6 +279,44 @@ paths:
                 type: string
                 example: on
 
+  /tracer-bullet:
+    post:
+      tags:
+        - "Maintenance Endpoints"
+      description: |
+        A utility to turn full request / response body logging on or off for any incoming request with a matching header.
+
+        For example, calling this with /tracer-bullet?header=source&value=test would enable tracing for any subsequent
+        incoming request with a header called 'source' and a value 'test'. Such a request would log it's full request and
+        response body to the console. In addition, any downstream request and responses initiated by the incoming call are
+        also logged as well as any async RabbitMQ notifications.
+
+        This is very useful on a busy production system where it's not feasible to just turn tracer on for all requests due
+        to the volume of output that would be generated.
+      parameters:
+        - name: header
+          in: query
+          required: true
+          schema:
+            type: string
+            description: the name of a request header to match on.
+            example: x-correlation-id
+        - name: value
+          in: query
+          required: true
+          schema:
+            type: string
+            description: the value of the header to match requests on.
+            example: trace-me
+      responses:
+        "200":
+          description: A confirmation message the tracer has been enabled or disabled.
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: bullet
+
   /update-account-status:
     put:
       tags:

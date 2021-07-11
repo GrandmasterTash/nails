@@ -6,16 +6,16 @@ Nails is a sample Rust HTTP microservice which demonstrates how to integrate Act
 
 ## Features
 
-- HTTP request which interact with MongoDB and can produce RabbitMQ notifications.
-- HTTP request retries - HTTP statuses of 50x and IO errors will, by default, be re-attempted.
-- Resilient RabbitMQ connection - if the connection to RabbitMQ goes down, Nails will attempt reconnections.
-- Integration tests using docker containers - dependencies are ready to go in docker.
-- Request ID propagation - the X-Correlation-ID header is propagated to downstream requests and async notifications all share originating id.
-- Jaeger integration for monitoring of requests and instrumented methods.
-- Request/Response payload tracing to console - can be dynamically enabled/disabled without downtime to look at HTTP traffic payloads in detail.
-- Secret credentials - MongoDB and RabbitMQ credentials can passed via env vars or via credential files.
-- Health-check to monitor MongoDB, RabbitMQ and other downstream services.
-- Time travel - tests can set a fixed time in the service to assert exact time values with predicable results.
+- HTTP request which interact with **MongoDB** and can produce **RabbitMQ** notifications.
+- **HTTP request retries** - HTTP statuses of 50x and IO errors will, by default, be re-attempted.
+- **Resilient RabbitMQ connection** - if the connection to RabbitMQ goes down, Nails will attempt reconnections.
+- **Integration tests** using docker containers - dependencies are ready to go in docker.
+- **Request ID propagation** - the X-Correlation-ID header is propagated to downstream requests and async notifications all share originating id.
+- **Distributed tracing** - Jaeger integration for monitoring of requests and instrumented methods.
+- Request/Response payload logging with a **tracer bullet** - can be dynamically enabled/disabled without downtime to look at HTTP traffic payloads in detail.
+- **Secret credentials** - MongoDB and RabbitMQ credentials can passed via env vars or via credential files.
+- **Health-check** to monitor MongoDB, RabbitMQ and other downstream services.
+- **Time travel** - tests can set a fixed time in the service to assert exact time values with predicable results.
 
 ## Running Nails
 

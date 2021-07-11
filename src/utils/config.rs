@@ -1,9 +1,9 @@
 use std::fmt::Write;
-use ansi_term::Colour;
 use std::env::VarError;
 use config::ConfigError;
 use serde::{Deserialize, Serialize};
 use super::errors::{self, InternalError};
+use crate::routes::admin::tracer::prelude::*;
 
 ///
 /// The service configuration - initialised at start-up.
@@ -86,9 +86,9 @@ impl Configuration {
 
         let mut output = String::new();
         for (k, v) in sorted {
-            write!(&mut output, "{:>20}{} {}\n",
-                Colour::RGB(135, 206, 250).paint(k),
-                Colour::Yellow.paint(":"),
+            write!(&mut output, "{:>23}{} {}\n",
+                k,
+                *COLON,
                 v)?;
         }
 

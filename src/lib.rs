@@ -10,7 +10,8 @@ use std::sync::Arc;
 use crossbeam_channel::bounded;
 use actix_service::ServiceFactory;
 use opentelemetry_jaeger::Uninstall;
-use middleware::{request_body_log, request_id, response_body_log};
+use middleware::{request, response};
+use crate::routes::admin::tracer::USE_COLOUR;
 use actix_web_opentelemetry::RequestTracing as OpenTelemetryMiddleware;
 use opentelemetry::{global, sdk::{propagation::TraceContextPropagator,trace,trace::Sampler}};
 use tracing_subscriber::{prelude::__tracing_subscriber_SubscriberExt, Registry, util::SubscriberInitExt};
@@ -35,6 +36,7 @@ fn configure_routes(cfg: &mut web::ServiceConfig) {
         .route("/settings", web::get().to(settings::handle))
         .route("/tracer/on", web::post().to(tracer::handle_on))
         .route("/tracer/off", web::post().to(tracer::handle_off))
+        .route("/tracer-bullet", web::post().to(tracer::handle_bullet))
         .route("/set_time/{fixed_time}", web::post().to(set_time::handle_set))
         .route("/reset_time", web::post().to(set_time::handle_reset))
 
@@ -76,7 +78,7 @@ pub async fn lib_main() -> Result<(), std::io::Error> {
         // .wrap(request_metrics.clone()) // Prometheus metrics for each endpoint.
 
         // Add here not in app due to change in ServiceFactory signature.
-        .wrap(response_body_log::Logging))
+        .wrap(response::Middleware))
         .bind(format!("0.0.0.0:{}", server_cfg.port))?
         .keep_alive(server_cfg.keep_alive)
         .client_timeout(server_cfg.client_timeout)
@@ -152,7 +154,7 @@ fn init_tracing(config: &Configuration) -> Option<Uninstall> {
         Some((tracer, uninstall)) => {
             if let Err(err) = Registry::default()
                 .with(tracing_subscriber::EnvFilter::from_default_env()) // Set the tracing level to match RUST_LOG env variable.
-                .with(tracing_subscriber::fmt::layer().with_test_writer())
+                .with(tracing_subscriber::fmt::layer().with_test_writer().with_ansi(*USE_COLOUR))
                 .with(tracing_opentelemetry::layer().with_tracer(tracer))
                 .try_init() {
                     info!("Tracing already initialised: {}", err.to_string()); // Allowed error here - tests call this fn repeatedly.
@@ -162,7 +164,7 @@ fn init_tracing(config: &Configuration) -> Option<Uninstall> {
         None => {
             if let Err(err) = Registry::default()
                 .with(tracing_subscriber::EnvFilter::from_default_env()) // Set the tracing level to match RUST_LOG env variable.
-                .with(tracing_subscriber::fmt::layer().with_test_writer())
+                .with(tracing_subscriber::fmt::layer().with_test_writer().with_ansi(*USE_COLOUR))
                 .try_init() {
                     info!("Tracing already initialised: {}", err.to_string()); // Allowed error here - tests call this fn repeatedly.
             }
@@ -193,8 +195,7 @@ pub fn app(ctx: Arc<InitialisationContext>) -> App<
     Body> {
 
     App::new()
-        .wrap(request_body_log::Logging)
-        .wrap(request_id::Middleware::new(Data::new(PartialRequestContext::from(ctx.clone()))))
+        .wrap(request::Middleware::new(Data::new(PartialRequestContext::from(ctx.clone()))))
 
         // .wrap(ErrorHandlers::new().handler(StatusCode::BAD_REQUEST, render_error))
 

@@ -30,7 +30,9 @@ POST {{host}}/tracer/off
 
 ###
 # @name tracer_bullet
-POST {{host}}/tracer/bullet?header=value
+POST {{host}}/tracer-bullet
+    ?header=x-correlation-id
+    &value=trace-me
 
 ###
 # @name get_accounts
@@ -39,11 +41,13 @@ GET {{host}}/accounts
 ###
 # @name get_account_by_id
 GET {{host}}/account/{{get_accounts.response.body.$[0].accountId}}
+x-correlation-id: trace-me
 
 ###
 # @name create_account_with_id_and_profile
 POST http://localhost:8989/create-account
 Content-Type: application/json
+x-correlation-id: trace-me
 
 {
     "accountId": "test_{{$guid}}",

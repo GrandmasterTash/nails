@@ -1,13 +1,12 @@
 use uuid::Uuid;
 use serde_json::Value;
-use ansi_term::Colour;
 use parking_lot::RwLock;
 use lazy_static::lazy_static;
 use std::{fs, time::Duration};
 use tracing::{debug, error, info, warn};
+use crate::{routes::admin::tracer::prelude::*, utils::config::Configuration};
 use backoff::{ExponentialBackoff, retry_notify};
 use super::{context::RequestContext, errors::InternalError};
-use crate::{routes::admin::tracer, utils::config::Configuration};
 use crossbeam_channel::{Receiver, RecvTimeoutError::Timeout, Sender};
 use lapin::{BasicProperties, Channel, Connection, ConnectionProperties, ExchangeKind, options::{BasicPublishOptions, ExchangeDeclareOptions}, types::{AMQPValue, FieldTable, ShortString}};
 
@@ -55,7 +54,8 @@ impl NotificationRequest {
             .fire_and_forget(Notification::new(
                 self.topic,
                 self.body.clone().unwrap_or_default(),
-                ctx.request_id()));
+                ctx.request_id(),
+                ctx.tracer()));
     }
 }
 
@@ -77,12 +77,13 @@ pub struct Notification {
     topic: &'static str, // The routing key to send the message via.
     version: u16,        // The body schema version - allows for breaking mutation of message structure.
     request_id: String,  // The correlation-id of the initiating request.
-    body: Value          // The JSON representation of the message body.
+    body: Value,         // The JSON representation of the message body.
+    tracer: bool,        // Indicates the notification should be traced by tracer.
 }
 
 impl Notification {
-    pub fn new(topic: &'static str, body: Value, request_id: &str) -> Self {
-        Notification { topic, body, request_id: request_id.to_string(), version: 1 }
+    pub fn new(topic: &'static str, body: Value, request_id: &str, tracer: bool) -> Self {
+        Notification { topic, body, request_id: request_id.to_string(), version: 1, tracer }
     }
 }
 
@@ -246,9 +247,6 @@ fn to_rabbit_message(notification: &Notification, app_name: &str) -> Option<(Vec
     }
 }
 
-const OUT: &str  = "<< ";
-const GREY: Colour = Colour::RGB(110, 110, 110);
-
 ///
 /// Send the RabbitMQ message - any errors are logged but ignored.
 ///
@@ -264,44 +262,44 @@ fn send(props: BasicProperties, bytes: Vec<u8>, notification: Notification, cc: 
                 // Ensure the exchange confirms the send.
                 match confirm.wait() {
                     Err(err) => error!("Failed to ack send for notification {:?}: {}", notification, err.to_string()),
-                    _ => {
-                        // TODO: Put in own fn
-                        if tracer::tracer_on() {
-                            let headers = format!("{}version{} {}\n{}messageType{} {}",
-                                GREY.paint(OUT),
-                                Colour::Yellow.paint(":"),
-                                notification.version,
-                                GREY.paint(OUT),
-                                Colour::Yellow.paint(":"),
-                                notification.topic);
-
-                            info!("Emitting message to {}\n{}App-Id{} {}\n{}Content-Type{} {:?}\n{}Correlation-Id{} {:?}\n{}Message-Id{} {:?}\n{}\n{}\n",
-                                notification.topic,
-                                GREY.paint(OUT),
-                                Colour::Yellow.paint(":"),
-                                props.app_id().format(),
-
-                                GREY.paint(OUT),
-                                Colour::Yellow.paint(":"),
-                                props.content_type().format(),
-
-                                GREY.paint(OUT),
-                                Colour::Yellow.paint(":"),
-                                props.correlation_id().format(),
-
-                                GREY.paint(OUT),
-                                Colour::Yellow.paint(":"),
-                                props.message_id().format(),
-                                headers,
-                                notification.body);
-                        }
-                    }
+                    _ => trace(&props, &notification)
                 }
             },
             Err(err) => error!("Failed to send notification {:?} : {}", notification, err.to_string())
     };
 }
 
+
+fn trace(props: &BasicProperties, notification: &Notification) {
+    if notification.tracer {
+        let headers = format!("\n\
+            {content_type}\n\
+            {app_id}\n\
+            {message_type}\n\
+            {version}\n\
+            {correlation_id}\n\
+            {message_id}",
+            version      = format_header("version", &format!("{}, ", notification.version)),
+            message_type = format_header("messageType", notification.topic),
+            app_id       = format_header("App-Id", props.app_id().format()),
+            content_type = format_header("Content-Type", props.content_type().format()),
+            correlation_id = format_header("X-Correlation-Id", props.correlation_id().format()),
+            message_id   = format_header("Message-Id", props.message_id().format()));
+
+        info!("Emitting message to {}{}\n{}\n",
+            notification.topic,
+            headers,
+            notification.body);
+    }
+}
+
+fn format_header(key: &str, value: &str) -> String {
+    format!("{out}{key}{colon} {value}",
+        out   = *OUT_2,
+        key   = key,
+        colon = *COLON,
+        value = value)
+}
 
 trait FormattableShortString {
     fn format(&self) -> &str;

@@ -138,7 +138,8 @@ impl From<Arc<InitialisationContext>> for PartialRequestContext {
 ///
 pub struct RequestContext {
     inner: Arc<PartialRequestContext>,
-    request_id: String
+    request_id: String,
+    tracer: bool,        // If set, tracer will log all request/responses
 }
 
 impl RequestContext {
@@ -146,10 +147,11 @@ impl RequestContext {
     /// Convert the thread's PartialRequestContext and request_id into a request-specific
     /// RequestContext.
     ///
-    pub fn from(http_context: Data<PartialRequestContext>, request_id: String) -> Self {
+    pub fn from(http_context: Data<PartialRequestContext>, request_id: String, tracer: bool) -> Self {
         RequestContext {
             inner: http_context.into_inner(),
-            request_id
+            request_id,
+            tracer,
         }
     }
 
@@ -210,6 +212,15 @@ impl RequestContext {
     pub fn config(&self) -> &Configuration {
         &self.inner.config()
     }
+
+    ///
+    /// Indicates if this request should be logged by tracer. Typically this will be if tracer is
+    /// turned on, or if the request headers match those required for a tracer bullet (see tracer.rs
+    /// for details).
+    ///
+    pub fn tracer(&self) -> bool {
+        self.tracer
+    }
 }
 
 ///
@@ -222,7 +233,7 @@ impl FromRequest for RequestContext {
 
     fn from_request(req: &HttpRequest, _payload: &mut dev::Payload) -> Self::Future {
         if let Some(ctx) = req.extensions().get::<RequestContext>() {
-            ok(RequestContext { inner: ctx.inner.clone(), request_id: ctx.request_id.clone() } )
+            ok(RequestContext { inner: ctx.inner.clone(), request_id: ctx.request_id.clone(), tracer: ctx.tracer.clone() } )
         } else {
             err(ErrorBadRequest("request context is missing"))
         }

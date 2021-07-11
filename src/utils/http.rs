@@ -1,16 +1,15 @@
 use url::Url;
 use futures::Stream;
 use serde_json::Value;
-use ansi_term::Colour;
 use itertools::Itertools;
 use tracing::{info, warn};
 use std::collections::HashMap;
 use serde::de::DeserializeOwned;
 use actix_web_opentelemetry::ClientExt;
 use std::{pin::Pin, str::FromStr, time::Duration};
-use crate::{APP_NAME, middleware::request_id::REQUEST_ID_HEADER, routes::admin::tracer};
 use super::{config::Configuration, context::RequestContext, errors::InternalError};
 use actix_web::{client::{Client, ClientRequest, ClientResponse}, dev::Decompress, web::Bytes};
+use crate::{APP_NAME, middleware::request::REQUEST_ID_HEADER, routes::admin::tracer::{prelude::*, colour_status}};
 use actix_http::{Payload, client::Connector, error::PayloadError, http::{Method, HeaderName, HeaderValue, header}};
 
 ///
@@ -25,14 +24,6 @@ pub fn http_client(config:&Configuration) -> Client {
             .finish())
         .finish()
 }
-
-// For tracing.
-const IN: &str = ">> ";
-const OUT: &str = "<< ";
-const GREY: Colour = Colour::RGB(110, 110, 110);
-const RED: Colour = Colour::RGB(205, 92, 92);
-const AMBER: Colour = Colour::RGB(255, 140, 0);
-const GREEN: Colour = Colour::RGB(107, 142, 35);
 
 ///
 /// Alias onto the Actix Futures response.
@@ -146,7 +137,9 @@ impl HttpRequest {
             // Add the request_id header.
             append_header(REQUEST_ID_HEADER, ctx.request_id(), &mut req)?;
 
-            self.trace(&req);
+            if ctx.tracer() {
+                self.trace(&req);
+            }
 
             // Make the request now with the appropriate body type.
             let resp = match &self.body {
@@ -198,33 +191,34 @@ impl HttpRequest {
             inner: resp
         };
 
-        resp.trace();
+        if ctx.tracer() {
+            resp.trace();
+        }
+
         Ok(resp)
     }
 
     fn trace(&self, req: &ClientRequest) {
-        if tracer::tracer_on() {
-            let body = match &self.body {
-                None => String::default(),
-                Some(body) => format!("\n{}", String::from_utf8(body.clone()).unwrap_or("cant read body".to_string())),
-            };
+        let body = match &self.body {
+            None => String::default(),
+            Some(body) => format!("\n{}", String::from_utf8(body.clone()).unwrap_or("cant read body".to_string())),
+        };
 
-            let headers = match req.headers().is_empty() {
-                true => String::default(),
-                false => format!("\n{}", req.headers().iter().map(|(key, value)| format!("{}{}{} {}",
-                    GREY.paint(OUT),
-                    key,
-                    Colour::Yellow.paint(":"),
-                    value.to_str().unwrap_or("cant read value"))).join("\n"))
-            };
+        let headers = match req.headers().is_empty() {
+            true => String::default(),
+            false => format!("\n{}", req.headers().iter().map(|(key, value)| format!("{out}{key}{colon} {value}",
+                out   = *OUT_2,
+                key   = key,
+                colon = *COLON,
+                value = value.to_str().unwrap_or("cant read value"))).join("\n"))
+        };
 
-            info!("Sending downstream request\n{}{} {}{}{}\n",
-                GREY.paint(OUT),
-                self.method,
-                req.get_uri(),
-                headers,
-                body);
-        }
+        info!("Sending downstream request\n{out}{method} {uri}{headers}{body}\n",
+            out     = *OUT_2,
+            method  = self.method,
+            uri     = req.get_uri(),
+            headers = headers,
+            body    = body);
     }
 }
 
@@ -239,7 +233,7 @@ pub struct HttpResponse {
     url: Url,       // The original request URL.
     method: Method, // The original request HTTP method.
     body: Bytes,    // Any received payload.
-    inner: ActixHttpResponse // Keep the wrapped response in-case we need to epose anything in the future.
+    inner: ActixHttpResponse, // Keep the wrapped response in-case we need to epose anything in the future.
 }
 
 impl HttpResponse {
@@ -256,44 +250,31 @@ impl HttpResponse {
     }
 
     fn trace(&self) {
-        if tracer::tracer_on() {
-            let body = match self.body.len() {
-                0 => String::default(),
-                _ => format!("\n{}", String::from_utf8_lossy(&self.body)),
-            };
+        let body = match self.body.len() {
+            0 => String::default(),
+            _ => format!("\n{}", String::from_utf8_lossy(&self.body)),
+        };
 
-            let headers = match self.inner.headers().is_empty() {
-                true => String::default(),
-                false => format!("\n{}", self.inner.headers().iter().map(|(key, value)| format!("{}{}{} {}",
-                    GREY.paint(IN),
-                    key,
-                    Colour::Yellow.paint(":"),
-                    value.to_str().unwrap_or("cant read header"))).join("\n"))
-            };
+        let headers = match self.inner.headers().is_empty() {
+            true => String::default(),
+            false => format!("\n{}", self.inner.headers().iter().map(|(key, value)| format!("{in}{key}{colon} {value}",
+                in    = *IN_2,
+                key   = key,
+                colon = *COLON,
+                value = value.to_str().unwrap_or("cant read header"))).join("\n"))
+        };
 
-            info!("Received response from downstream request\n{}{} {} {}{}{}\n",
-                GREY.paint(IN),
-                self.method,
-                self.url,
-                colour_status(self.inner.status().as_u16()),
-                headers,
-                body);
-        }
+        info!("Received response from downstream request\n{in}{method} {url} {status}{headers}{body}\n",
+            in      = *IN_2,
+            method  = self.method,
+            url     = self.url,
+            status  = colour_status(self.inner.status().as_u16()),
+            headers = headers,
+            body    = body);
     }
 
     pub fn json<T: DeserializeOwned>(&self) -> Result<T, InternalError> {
         Ok(serde_json::from_slice(&self.body)?)
-    }
-}
-
-///
-/// Return the status with ansi-colouring.
-///
-pub fn colour_status(status: u16) -> String {
-    match status {
-        status @ 200..=299 => format!("{}", GREEN.paint(format!("{}", status))),
-        status @ 300..=399 => format!("{}", AMBER.paint(format!("{}", status))),
-        status @         _ => format!("{}", RED.paint(format!("{}", status))),
     }
 }
 

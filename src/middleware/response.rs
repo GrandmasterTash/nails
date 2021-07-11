@@ -1,6 +1,5 @@
 use tracing::info;
 use std::pin::Pin;
-use ansi_term::Colour;
 use std::future::Future;
 use itertools::Itertools;
 use std::marker::PhantomData;
@@ -9,17 +8,13 @@ use std::task::{Context, Poll};
 use futures::future::{ok, Ready};
 use actix_web::web::{Bytes, BytesMut};
 use actix_service::{Service, Transform};
+use crate::routes::admin::tracer::{colour_status, prelude::*, tracer_on};
 use actix_web::body::{BodySize, MessageBody, ResponseBody};
 use actix_web::{dev::ServiceRequest, dev::ServiceResponse, Error};
-use crate::routes::admin::tracer;
-use crate::utils::http::colour_status;
 
-const OUT: &str = "< ";
-const GREY: Colour = Colour::RGB(110, 110, 110);
+pub struct Middleware;
 
-pub struct Logging;
-
-impl<S: 'static, B> Transform<S> for Logging
+impl<S: 'static, B> Transform<S> for Middleware
 where
     S: Service<Request = ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
     B: MessageBody + 'static,
@@ -55,15 +50,15 @@ where
     }
 
     fn call(&mut self, req: ServiceRequest) -> Self::Future {
-        let partial_log = match tracer::tracer_on() {
+        let partial_log = match tracer_on(req.headers()) {
             false => None,
             true => {
                 let remote_addr = req.connection_info().realip_remote_addr().unwrap_or("unknown").to_string();
-                Some(format!("Response sent to {}\n{}{}{}",
-                    remote_addr,
-                    GREY.paint(OUT),
-                    req.method(),
-                    req.uri()))
+                Some(format!("Response sent to {addr}\n{out}{method}{uri}",
+                    addr   = remote_addr,
+                    out    = *OUT,
+                    method = req.method(),
+                    uri    = req.uri()))
             }
         };
 
@@ -164,10 +159,10 @@ impl<B: MessageBody> MessageBody for BodyLogger<B> {
 fn format_headers(rsp: &ResponseHead) -> String {
     rsp.headers()
         .iter()
-        .map(|(key, value)| format!("{}{}{} {}",
-            GREY.paint(OUT),
-            key,
-            Colour::Yellow.paint(":"),
-            value.to_str().unwrap_or("cant read value")) )
+        .map(|(key, value)| format!("{out}{key}{colon} {value}",
+            out   = *OUT,
+            key   = key,
+            colon = *COLON,
+            value = value.to_str().unwrap_or("cant read value")) )
         .join("\n")
 }
