@@ -14,7 +14,6 @@ lazy_static! {
     static ref DOCKER: Cli = Cli::default();
 }
 
-
 pub struct DockerContainers {
     ref_count: usize,
     mongo_container: Option<Container<'static, Cli, Mongo>>,
@@ -53,7 +52,7 @@ impl DockerContainers {
             Mongo::default(),
             RunArgs::default()
                 .with_mapped_port(Port { local: mongo_port, internal: MONGO_PORT })));
-        std::env::set_var("MONGO_URI", format!("mongodb://admin:changeme@localhost:{}/?connectTimeoutMS=5000&socketTimeoutMS=5000&serverSelectionTimeoutMS=5000", mongo_port));
+        std::env::set_var("MONGO_URI", format!("mongodb://admin:changeme@localhost:{}/", mongo_port));
         println!("Started MongoDB on port {}", mongo_port);
     }
 
@@ -67,9 +66,10 @@ impl DockerContainers {
     fn start_rabbitmq(&mut self) {
         println!("Starting RabbitMQ docker container...");
         let rabbit_port = get_port();
+        std::env::set_var("TEST_RABBIT_PORT", format!("{}", rabbit_port));
         self.rabbit_container = Some(DOCKER.run_with_args(Rabbit::default(),
             RunArgs::default().with_mapped_port(Port { local: rabbit_port, internal: RABBIT_PORT })));
-        std::env::set_var("RABBIT_URI", format!("amqp://admin:changeme@localhost:{}/%2f", rabbit_port));
+        std::env::set_var("RABBIT_URI", format!("amqp://admin:changeme@localhost:{}/%2f", rabbit_port)); // Encoded vhost slash at end
         println!("Started RabbitMQ on port {}", rabbit_port);
     }
 
@@ -102,5 +102,12 @@ fn get_port() -> u16 {
             eprintln!("Unable to obtain a port from the OS for a test container: {}", err.to_string());
             0
         }
+    }
+}
+
+pub fn get_rabbitmq_port() -> u16 {
+    match std::env::var("TEST_RABBIT_PORT") {
+        Ok(port) =>  port.parse::<u16>().expect("Couldn't parse TEST_RABBIT_PORT"),
+        Err(_) => RABBIT_PORT,
     }
 }

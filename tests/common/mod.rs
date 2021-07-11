@@ -36,14 +36,17 @@ pub async fn start_app() -> App<
 /// This allows us to ref-count the tests using any launched docker containers and we
 /// can tear-down those containers when the last test calls teardown.
 ///
+/// For catch-unwind info see: -
+/// ref: https://stackoverflow.com/questions/65762689/how-can-assertunwindsafe-be-used-with-the-catchunwind-future
+///
+use futures::future::FutureExt;
 pub async fn run_test<T: 'static>(test: T) -> ()
     where
         T: Future,
 {
     setup();
 
-    test.await;
-    // BUG: If a test panics, teardown isn't called.
+    let result = std::panic::AssertUnwindSafe(test).catch_unwind().await;
 
     // Small non-blocking delay needed to avoid fast tests starting and stopping mongo
     // before other tests get a chance to start. This delay needs to be just enough to allow
@@ -52,6 +55,11 @@ pub async fn run_test<T: 'static>(test: T) -> ()
     // tokio::time::sleep(Duration::from_millis(10)).await; // Tokio 1.x
 
     teardown();
+
+    match result {
+        Ok(_) => (),
+        Err(_) => panic!("Test failed - check above for assertion panic fails"),
+    };
 }
 
 ///
@@ -269,6 +277,8 @@ pub mod rabbit {
     use assert_json_diff::{CompareMode, Config, assert_json_matches_no_panic};
     use lapin::{Connection, ConnectionProperties, ExchangeKind, options::{BasicAckOptions, BasicConsumeOptions, ExchangeDeclareOptions, QueueBindOptions, QueueDeclareOptions}, types::FieldTable};
 
+    use crate::common::shared::get_rabbitmq_port;
+
     #[derive(Debug)]
     pub struct RabbitMessage {
         payload: String
@@ -320,7 +330,9 @@ pub mod rabbit {
         let join_handle = task::spawn_blocking(move || {
             tokio::spawn(async move {
                 // Connect to rabbit.
-                let connection = Connection::connect("amqp://admin:changeme@localhost:5672", ConnectionProperties::default()).wait().expect("No test rabbit connection");
+                let uri = format!("amqp://admin:changeme@localhost:{}", get_rabbitmq_port());
+                println!("Test rabbit client using : {}", uri);
+                let connection = Connection::connect(&uri, ConnectionProperties::default()).wait().expect("No test rabbit connection");
                 let channel = connection.create_channel().wait().expect("No test channel");
                 let queue_name = format!("test-{}", Uuid::new_v4().to_hyphenated().to_string());
 

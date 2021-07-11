@@ -79,5 +79,4 @@ Add any new errors that can be raised in to *utils/errors.rs*.
 Profit.
 
 ## Known Issues
-- Currently there's no CatchUnwind support in run_test - so if a test fails/panics the containers are left running. For this reason recommend you run tests with TESTS_USE_EXISTING_CONTAINERS=true.
 - Error responses are not constructed inside a tracing span so logged errors lose the span's context. Future work in the actix-otel project looks like a feature flag sync-middleware may make this feasible.

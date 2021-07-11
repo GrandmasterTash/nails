@@ -20,7 +20,7 @@ services:
   #     - docker_net
 
   rabbitmq:
-    image: 'bitnami/rabbitmq:latest'
+    image: 'bitnami/rabbitmq:3.8.18'
     container_name: 'rabbit'
     environment:
       - RABBITMQ_USERNAME=admin
@@ -32,7 +32,7 @@ services:
       - docker_net
 
   mongo:
-    image: mongo
+    image: 'mongo:4.4.6'
     container_name: 'mongo'
     ports:
       - '27017:27017'
@@ -44,7 +44,7 @@ services:
 
   # UI available on http://localhost:8111/__admin/webapp/mappings
   wiremock:
-    image: holomekc/wiremock-gui
+    image: 'holomekc/wiremock-gui:2.27.2.1'
     container_name: 'wiremock'
     environment:
       WIREMOCK_OPTIONS: "--root-dir=/home/wiremock/storage"
@@ -57,7 +57,7 @@ services:
 
   # UI available on http://localhost:16686/
   jaeger:
-    image: "jaegertracing/all-in-one"
+    image: 'jaegertracing/all-in-one:1.24.0'
     container_name: "jaeger"
     networks:
       - docker_net
