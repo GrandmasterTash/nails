@@ -36,8 +36,8 @@ pub mod prelude {
 /// The API schema for POSTing a new Account.
 ///
 #[skip_serializing_none] // Use this to stop writing null fields to MongoDB.
-#[serde(rename_all = "camelCase")]
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct NewAccount {
     pub account_id: Option<String>,
     pub status: Option<AccountStatus>,
@@ -51,8 +51,8 @@ pub struct NewAccount {
 ///
 /// The API schema for updating the account status.
 ///
-#[serde(rename_all = "camelCase")]
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct StatusModification {
     pub account_id: String,
     pub status: AccountStatus
@@ -65,8 +65,8 @@ pub struct StatusModification {
 /// between chrono dates and bson we have to wire-in a custom date deserialiser.
 ///
 #[skip_serializing_none]
-#[serde(rename_all = "camelCase")]
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Account {
     pub account_id: String,
     pub profile_id: String,
@@ -94,8 +94,8 @@ impl From<AccountStatus> for Bson {
     }
 }
 
-#[serde(rename_all = "camelCase")]
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AddressLine {
     pub key: String,
     pub value: String

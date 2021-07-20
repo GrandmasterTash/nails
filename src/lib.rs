@@ -120,9 +120,6 @@ pub async fn init_everything() -> Result<(InitialisationContext, Option<Uninstal
     // and can use a fire-and-forget approach to notifications.
     let rabbit_config = config.clone();
     let (tx, rx) = bounded(config.notification_queue_size);
-    // TODO: Investigate tokio blocking.... couldn't get it to work originally. This could allow us
-    // to handle send failures in the HTTP handlers themselves if required. The current, external thread
-    // implementation is a barrier to that.
     std::thread::spawn(move || rabbit_publisher(rx, APP_NAME, rabbit_config));
 
     // Create a context object that can be used as a parameter in any HTTP request handler.

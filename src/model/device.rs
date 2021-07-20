@@ -19,8 +19,8 @@ pub mod prelude {
 }
 
 #[skip_serializing_none]
-#[serde(rename_all = "camelCase")]
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct NewDevice {
     pub device_id: Option<String>,
     pub profile_id: Option<String>,
@@ -30,8 +30,8 @@ pub struct NewDevice {
 }
 
 #[skip_serializing_none]
-#[serde(rename_all = "camelCase")]
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Device {
     pub device_id: String,
     pub profile_id: String,

@@ -6,6 +6,7 @@ services:
   #   image: 'nails:latest'
   #   container_name: 'nails'
   #   environment:
+  #     - USE_COLOUR=true
   #     - MONGO_URI=mongodb://$$USERNAME:$$PASSWORD@mongo:27017/?connectTimeoutMS=5000&socketTimeoutMS=5000&serverSelectionTimeoutMS=5000
   #     - MONGO_CREDENTIALS=/test_credentials
   #     - RABBIT_URI=amqp://$$USERNAME:$$PASSWORD@rabbit:5672

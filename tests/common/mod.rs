@@ -9,8 +9,6 @@ use actix_http::{Request, http::Method};
 use actix_service::{Service, ServiceFactory};
 use actix_web::{App, dev::{Body, ServiceRequest, ServiceResponse}, test::{TestRequest, call_service}};
 
-// Interesting - test runner: https://dev.to/tjtelan/how-to-build-a-custom-integration-test-harness-in-rust-7n7
-
 ///
 /// Get an instance of an App with routes and connections to mongo and rabbit setup.
 ///
@@ -25,7 +23,7 @@ pub async fn start_app() -> App<
 
     let ctx = match nails::init_everything().await {
         Ok(ctx) => ctx.0,
-        Err(err) => panic!(format!("init_everthing failed: {}", err.to_string()))
+        Err(err) => panic!("init_everthing failed: {}", err.to_string())
     };
     nails::app(Arc::new(ctx))
 }

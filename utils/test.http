@@ -45,7 +45,7 @@ x-correlation-id: trace-me
 
 ###
 # @name create_account_with_id_and_profile
-POST http://localhost:8989/create-account
+POST {{host}}/create-account
 Content-Type: application/json
 x-correlation-id: trace-me
 
@@ -105,7 +105,7 @@ Content-Type: application/json
 
 ###
 # @name create_account_with_duplicate_device_id
-POST http://localhost:8989/create-account
+POST {{host}}/create-account
 Content-Type: application/json
 
 {

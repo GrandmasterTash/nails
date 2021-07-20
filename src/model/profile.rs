@@ -12,14 +12,14 @@ pub mod prelude {
     pub const DEFAULT: &str = "DEFAULT";
 }
 
-#[serde(rename_all = "camelCase")]
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AccountProfile {
-    profile_id: Option<String>
+    pub profile_id: Option<String>
 }
 
-#[serde(rename_all = "camelCase")]
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DeviceProfile {
     profile_id: Option<String>
 }
